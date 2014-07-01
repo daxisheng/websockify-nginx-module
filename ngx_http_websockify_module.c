@@ -37,7 +37,7 @@ static void ngx_http_websockify_abort_request(ngx_http_request_t *r);
 static void ngx_http_websockify_finalize_request(ngx_http_request_t *r, ngx_int_t rc);
 
 
-static void ngx_http_websockify_buf_cleanup(ngx_event_t *ev);
+static void ngx_http_websockify_flush_buf(ngx_event_t *ev);
 static ssize_t ngx_http_websockify_send_buffer(ngx_connection_t *c, ngx_buf_t* b, ngx_send_pt send);
 static ssize_t ngx_http_websockify_send_with_encode(ngx_connection_t *c, u_char *buf, size_t size);
 static ssize_t ngx_http_websockify_send_with_decode(ngx_connection_t *c, u_char *buf, size_t size);
@@ -62,7 +62,7 @@ typedef struct ngx_http_websockify_request_ctx_s {
     ngx_buf_t                 *encode_send_buf;
     ngx_buf_t                 *decode_send_buf;
 
-    ngx_event_t                buf_cleanup_ev;
+    ngx_event_t                flush_buf_ev;
 } ngx_http_websockify_ctx_t ;
 
 
@@ -236,7 +236,7 @@ ngx_http_websockify_decode_hybi(unsigned char *src, size_t srclength,
 //}}}
 
 static void  
-ngx_http_websockify_buf_cleanup(ngx_event_t *ev)   
+ngx_http_websockify_flush_buf(ngx_event_t *ev)   
 {  
     ngx_http_websockify_ctx_t *ctx;
     ngx_http_request_t        *r;
@@ -286,7 +286,7 @@ ngx_http_websockify_send_buffer(ngx_connection_t *c, ngx_buf_t* b, ngx_send_pt s
 
         if (n == NGX_AGAIN){
             ngx_log_debug(NGX_LOG_DEBUG_HTTP, c->log, 0, "%s: add timer", __func__);
-            ngx_add_timer(&(ctx->buf_cleanup_ev), 20); // TODO hardcode
+            ngx_add_timer(&(ctx->flush_buf_ev), 20); // TODO hardcode
         } 
 
         if ( (n <= 0) || (b->pos == b->last) ) {
@@ -677,9 +677,9 @@ ngx_http_websockify_handler(ngx_http_request_t *r)
     ctx->ws_key.data = NULL;
     ctx->header_processed = 0;
 
-    ctx->buf_cleanup_ev.log     = r->connection->log;
-    ctx->buf_cleanup_ev.data    = ctx;
-    ctx->buf_cleanup_ev.handler = ngx_http_websockify_buf_cleanup;
+    ctx->flush_buf_ev.log     = r->connection->log;
+    ctx->flush_buf_ev.data    = ctx;
+    ctx->flush_buf_ev.handler = ngx_http_websockify_flush_buf;
 
     if (!ctx->encode_send_buf || !ctx->decode_send_buf){
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
